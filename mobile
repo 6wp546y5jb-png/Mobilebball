@@ -7,10 +7,9 @@ local StarterGui = game:GetService("StarterGui")
 
 -- Execution Notification
 task.spawn(function()
-    -- Small delay to ensure the CoreGui is ready to receive notifications
     task.wait(0.5)
     StarterGui:SetCore("SendNotification", {
-        Title = "Script Statusss",
+        Title = "Script Status",
         Text = "Auto Guard Executed Successfully!",
         Duration = 3,
         Button1 = "OK"
@@ -39,23 +38,26 @@ local autoGuardEnabled = true
 local lastToggleTime = 0
 local toggleDebounce = 0.1
 
--- GUI Toggle (Mobile Friendly UI)
+-- GUI Toggle (Mobile Optimized UI)
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AutoGuardGUI"
 screenGui.ResetOnSpawn = false
+-- Setting ZIndexBehavior ensures it doesn't override core movement layers
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling 
 screenGui.Parent = me:WaitForChild("PlayerGui")
 
 local toggleButton = Instance.new("TextButton")
 toggleButton.Size = UDim2.new(0, 140, 0, 45)
 toggleButton.Position = UDim2.new(0.5, -70, 0.1, 0)
-toggleButton.BackgroundColor3 = Color3.fromRGB(30, 150, 30) -- Defaulted to green since it starts ON
+toggleButton.BackgroundColor3 = Color3.fromRGB(30, 150, 30)
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleButton.Text = "Auto Guard: ON"
 toggleButton.Font = Enum.Font.SourceSansBold
 toggleButton.TextSize = 18
+-- CRITICAL MOBILE FIX: Stop button from sinking/stealing movement touches nearby
+toggleButton.Active = false 
 toggleButton.Parent = screenGui
 
--- Rounded corners for modern mobile look
 local uiCorner = Instance.new("UICorner")
 uiCorner.CornerRadius = UDim.new(0, 8)
 uiCorner.Parent = toggleButton
@@ -69,12 +71,11 @@ local function toggleGuard()
     end
 end
 
-toggleButton.MouseButton1Click:Connect(toggleGuard)
+-- Works smoothly with finger taps on iOS without breaking the dynamic joystick context
+toggleButton.Activated:Connect(toggleGuard)
 
--- FIXED CONTROLLER BIND (Switched to UserInputService to protect iOS Joystick)
+-- Controller Support Fallback (Doesn't affect pure mobile finger play)
 UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-    -- We do not block gameProcessedEvent here so game controls still function, 
-    -- but we check if ButtonA was pressed on a controller.
     if input.KeyCode == Enum.KeyCode.ButtonA then
         local currentTime = tick()
         if currentTime - lastToggleTime > toggleDebounce then
