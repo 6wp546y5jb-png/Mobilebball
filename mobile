@@ -1,26 +1,20 @@
-local Players = game:GetService("Players")
+local Players = game:GetService("Players") -- Fixed typo here
 local RunService = game:GetService("RunService")
-local StarterGui = game:GetService("StarterGui")
-local TweenService = game:GetService("TweenService")
-
--- Execution Notification
-task.spawn(function()
-    task.wait(0.5)
-    StarterGui:SetCore("SendNotification", {
-        Title = "Mobile Guard",
-        Text = "Mobile Script Loaded!",
-        Duration = 2,
-        Button1 = "OK"
-    })
-end)
+local ContextActionService = game:GetService("ContextActionService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local me = Players.LocalPlayer
 local shotFlags = {}
 local isGuarding = false
 local guardStartTime = 0
-local guardDuration = 0.8 -- Slightly reduced for faster mobile reaction
+local guardDuration = 1.0
 
--- Shooting animation IDs to track
+-- Access Roblox's Master Control Module to force the joystick to stay
+local PlayerScripts = me:WaitForChild("PlayerScripts")
+local PlayerModule = require(PlayerScripts:WaitForChild("PlayerModule"))
+local ControlModule = PlayerModule:GetControls()
+
+-- Shooting animation IDs
 local shootAnims = {
     95017863158093, 16792383527, 72310933284051, 15933297660,
     15625498058, 15640621238, 137716556823459, 139272202446921,
@@ -34,80 +28,47 @@ end
 
 local autoGuardEnabled = true
 
--- SAFE MOBILE GUI (Size and position adjusted to not interfere with screen touches)
+-- GUI Toggle
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "MobileGuardUI"
+screenGui.Name = "AutoGuardGUI"
 screenGui.ResetOnSpawn = false
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling 
 screenGui.Parent = me:WaitForChild("PlayerGui")
 
 local toggleButton = Instance.new("TextButton")
-toggleButton.Size = UDim2.new(0, 90, 0, 40)
--- Placed mid-left, safely above the dynamic thumbstick area
-toggleButton.Position = UDim2.new(0.05, 0, 0.25, 0) 
-toggleButton.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.Text = "AUTO: ON"
-toggleButton.Font = Enum.Font.GothamBold
-toggleButton.TextSize = 12
-toggleButton.ClipsDescendants = true
+toggleButton.Size = UDim2.new(0, 120, 0, 40)
+toggleButton.Position = UDim2.new(0.5, -60, 0.8, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(50,50,50)
+toggleButton.TextColor3 = Color3.fromRGB(255,255,255)
+toggleButton.Text = "Auto Guard ON"
 toggleButton.Parent = screenGui
+toggleButton.Active = true
+toggleButton.Draggable = true
 
-local uiCorner = Instance.new("UICorner")
-uiCorner.CornerRadius = UDim.new(0, 8)
-uiCorner.Parent = toggleButton
-
--- Replicated communication handler
-local function setMobileGuardState(state)
-    local char = me.Character
-    if not char then return end
-    
-    -- Method 1: Local state attributes
-    char:SetAttribute("Guarding", state)
-    char:SetAttribute("Contesting", state)
-    char:SetAttribute("Defense", state)
-    
-    -- Method 2: Fire network communication remotes if the game uses them
-    for _, obj in ipairs(char:GetDescendants()) do
-        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("guard") or obj.Name:lower():find("defend") or obj.Name:lower():find("input")) then
-            obj:FireServer(state)
-        end
-    end
-end
-
-local function releaseGuard()
-    if isGuarding then
-        setMobileGuardState(false)
-        isGuarding = false
-    end
-end
-
+-- ULTRA SMOOTH GUARD - NO MOVEMENT INTERRUPTION
 local function pressGuard()
     if not isGuarding then
-        setMobileGuardState(true)
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.ButtonL2, false, game)
         isGuarding = true
         guardStartTime = tick()
     end
 end
 
--- Visual feedback function for mobile taps
-local function toggleGuard()
-    autoGuardEnabled = not autoGuardEnabled
-    
-    local targetColor = autoGuardEnabled and Color3.fromRGB(34, 197, 94) or Color3.fromRGB(239, 68, 68)
-    local targetText = autoGuardEnabled and "AUTO: ON" or "AUTO: OFF"
-    
-    TweenService:Create(toggleButton, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
-    toggleButton.Text = targetText
-    
-    if not autoGuardEnabled and isGuarding then
-        releaseGuard()
+local function releaseGuard()
+    if isGuarding then
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.ButtonL2, false, game)
+        isGuarding = false
     end
 end
 
-toggleButton.Activated:Connect(toggleGuard)
+toggleButton.MouseButton1Click:Connect(function()
+    autoGuardEnabled = not autoGuardEnabled
+    toggleButton.Text = autoGuardEnabled and "Auto Guard ON" or "Auto Guard OFF"
+    if not autoGuardEnabled and isGuarding then
+        releaseGuard()
+    end
+end)
 
--- Track opponent shooting animations
+-- Detect shooting
 local function isShooting(plr)
     local char = plr.Character
     if not char then return nil end
@@ -123,16 +84,23 @@ local function isShooting(plr)
     return nil
 end
 
--- Court range check
+-- Court boundary check
 local function isInCourtBounds(hrp, myHRP)
     if not hrp or not myHRP then return false end
-    -- Limits the check range to standard basketball court space
-    local distance = (hrp.Position - myHRP.Position).Magnitude
-    return distance <= 25 
+    local COURT_LENGTH, COURT_WIDTH = 70, 50
+    local minX, maxX = myHRP.Position.X - COURT_WIDTH/2, myHRP.Position.X + COURT_WIDTH/2
+    local minZ, maxZ = myHRP.Position.Z - COURT_LENGTH/2, myHRP.Position.Z + COURT_LENGTH/2
+    local pos = hrp.Position
+    return pos.X >= minX and pos.X <= maxX and pos.Z >= minZ and pos.Z <= maxZ
 end
 
--- HEARTBEAT MONITOR
+-- MAIN LOOP
 RunService.Heartbeat:Connect(function()
+    -- FORCE JOYSTICK TO STAY VISIBLE AT ALL COSTS
+    if ControlModule then
+        ControlModule:Enable(true)
+    end
+
     if not autoGuardEnabled then
         if isGuarding then
             releaseGuard()
@@ -145,6 +113,7 @@ RunService.Heartbeat:Connect(function()
     local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
     if not myChar or not myHRP then return end
 
+    -- FAST threat detection
     local shouldGuard = false
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= me and plr.Team ~= me.Team and plr.Character then
@@ -158,6 +127,7 @@ RunService.Heartbeat:Connect(function()
         end
     end
 
+    -- SMOOTH GUARD LOGIC
     if shouldGuard then
         if not isGuarding then
             pressGuard()
@@ -166,6 +136,6 @@ RunService.Heartbeat:Connect(function()
     else
         if isGuarding and (tick() - guardStartTime) >= guardDuration then
             releaseGuard()
-        end
-    end
+        end 
+    end 
 end)
