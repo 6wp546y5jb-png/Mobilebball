@@ -1,0 +1,172 @@
+-- Fix typo in original service retrieval
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ContextActionService = game:GetService("ContextActionService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+
+-- Execution Notification
+task.spawn(function()
+    -- Small delay to ensure the CoreGui is ready to receive notifications
+    task.wait(0.5)
+    StarterGui:SetCore("SendNotification", {
+        Title = "Script Status",
+        Text = "Auto Guard Executed Successfully!",
+        Duration = 3,
+        Button1 = "OK"
+    })
+end)
+
+local me = Players.LocalPlayer
+local shotFlags = {}
+local isGuarding = false
+local guardStartTime = 0
+local guardDuration = 1.0
+
+-- Shooting animation IDs
+local shootAnims = {
+    95017863158093, 16792383527, 72310933284051, 15933297660,
+    15625498058, 15640621238, 137716556823459, 139272202446921,
+    15933244201, 15625460755, 15640551795, 115440095914436, 106278649589240
+}
+
+local shootAnimSet = {}
+for _, id in ipairs(shootAnims) do
+    shootAnimSet[id] = true
+end
+
+local autoGuardEnabled = true
+local lastToggleTime = 0
+local toggleDebounce = 0.1
+
+-- GUI Toggle (Mobile Friendly UI)
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoGuardGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = me:WaitForChild("PlayerGui")
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0, 140, 0, 45)
+toggleButton.Position = UDim2.new(0.5, -70, 0.1, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(30, 150, 30) -- Defaulted to green since it starts ON
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Text = "Auto Guard: ON"
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.TextSize = 18
+toggleButton.Parent = screenGui
+
+-- Rounded corners for modern mobile look
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 8)
+uiCorner.Parent = toggleButton
+
+local function toggleGuard()
+    autoGuardEnabled = not autoGuardEnabled
+    toggleButton.Text = autoGuardEnabled and "Auto Guard: ON" or "Auto Guard: OFF"
+    toggleButton.BackgroundColor3 = autoGuardEnabled and Color3.fromRGB(30, 150, 30) or Color3.fromRGB(150, 30, 30)
+    if not autoGuardEnabled and isGuarding then
+        releaseGuard()
+    end
+end
+
+toggleButton.MouseButton1Click:Connect(toggleGuard)
+
+-- FIXED CONTROLLER BIND
+ContextActionService:BindActionAtPriority(
+    "ToggleAutoGuard",
+    function(actionName, inputState, inputObject)
+        if inputState == Enum.UserInputState.Begin then
+            local currentTime = tick()
+            if currentTime - lastToggleTime > toggleDebounce then
+                lastToggleTime = currentTime
+                toggleGuard()
+            end
+        end
+        return Enum.ContextActionResult.Pass 
+    end,
+    false,
+    Enum.ContextActionPriority.High.Value,
+    Enum.KeyCode.ButtonA
+)
+
+-- GUARDING LOGIC
+function pressGuard()
+    if not isGuarding then
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.ButtonL2, false, game)
+        isGuarding = true
+        guardStartTime = tick()
+    end
+end
+
+function releaseGuard()
+    if isGuarding then
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.ButtonL2, false, game)
+        isGuarding = false
+    end
+end
+
+-- Detect shooting
+local function isShooting(plr)
+    local char = plr.Character
+    if not char then return nil end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+
+    for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+        local animId = tonumber(track.Animation.AnimationId:match("%d+"))
+        if animId and shootAnimSet[animId] then
+            return animId
+        end
+    end
+    return nil
+end
+
+-- Court boundary check
+local function isInCourtBounds(hrp, myHRP)
+    if not hrp or not myHRP then return false end
+    local COURT_LENGTH, COURT_WIDTH = 70, 50
+    local minX, maxX = myHRP.Position.X - COURT_WIDTH/2, myHRP.Position.X + COURT_WIDTH/2
+    local minZ, maxZ = myHRP.Position.Z - COURT_LENGTH/2, myHRP.Position.Z + COURT_LENGTH/2
+    local pos = hrp.Position
+    return pos.X >= minX and pos.X <= maxX and pos.Z >= minZ and pos.Z <= maxZ
+end
+
+-- MAIN LOOP
+RunService.Heartbeat:Connect(function()
+    if not autoGuardEnabled then
+        if isGuarding then
+            releaseGuard()
+        end
+        shotFlags = {}
+        return
+    end
+
+    local myChar = me.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myChar or not myHRP then return end
+
+    local shouldGuard = false
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= me and plr.Team ~= me.Team and plr.Character then
+            local animId = isShooting(plr)
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            if animId and hrp and isInCourtBounds(hrp, myHRP) then
+                shouldGuard = true
+                shotFlags[plr] = animId
+                break
+            end
+        end
+    end
+
+    if shouldGuard then
+        if not isGuarding then
+            pressGuard()
+        end
+        guardStartTime = tick()
+    else
+        if isGuarding and (tick() - guardStartTime) >= guardDuration then
+            releaseGuard()
+        end
+    end
+end)
