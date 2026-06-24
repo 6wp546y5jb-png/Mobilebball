@@ -1,7 +1,6 @@
 -- Fix typo in original service retrieval
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local ContextActionService = game:GetService("ContextActionService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local UserInputService = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
@@ -11,7 +10,7 @@ task.spawn(function()
     -- Small delay to ensure the CoreGui is ready to receive notifications
     task.wait(0.5)
     StarterGui:SetCore("SendNotification", {
-        Title = "Script Status",
+        Title = "Script Statusss",
         Text = "Auto Guard Executed Successfully!",
         Duration = 3,
         Button1 = "OK"
@@ -72,23 +71,18 @@ end
 
 toggleButton.MouseButton1Click:Connect(toggleGuard)
 
--- FIXED CONTROLLER BIND
-ContextActionService:BindActionAtPriority(
-    "ToggleAutoGuard",
-    function(actionName, inputState, inputObject)
-        if inputState == Enum.UserInputState.Begin then
-            local currentTime = tick()
-            if currentTime - lastToggleTime > toggleDebounce then
-                lastToggleTime = currentTime
-                toggleGuard()
-            end
+-- FIXED CONTROLLER BIND (Switched to UserInputService to protect iOS Joystick)
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    -- We do not block gameProcessedEvent here so game controls still function, 
+    -- but we check if ButtonA was pressed on a controller.
+    if input.KeyCode == Enum.KeyCode.ButtonA then
+        local currentTime = tick()
+        if currentTime - lastToggleTime > toggleDebounce then
+            lastToggleTime = currentTime
+            toggleGuard()
         end
-        return Enum.ContextActionResult.Pass 
-    end,
-    false,
-    Enum.ContextActionPriority.High.Value,
-    Enum.KeyCode.ButtonA
-)
+    end
+end)
 
 -- GUARDING LOGIC
 function pressGuard()
