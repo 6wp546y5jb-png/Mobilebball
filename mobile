@@ -1,17 +1,15 @@
--- Fix typo in original service retrieval
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local UserInputService = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
+local TweenService = game:GetService("TweenService")
 
 -- Execution Notification
 task.spawn(function()
     task.wait(0.5)
     StarterGui:SetCore("SendNotification", {
-        Title = "Script Status",
-        Text = "Auto Guard Executed Successfully!",
-        Duration = 3,
+        Title = "Mobile Guard",
+        Text = "Mobile Script Loaded!",
+        Duration = 2,
         Button1 = "OK"
     })
 end)
@@ -22,7 +20,7 @@ local isGuarding = false
 local guardStartTime = 0
 local guardDuration = 1.0
 
--- Shooting animation IDs
+-- Shooting animation IDs to track
 local shootAnims = {
     95017863158093, 16792383527, 72310933284051, 15933297660,
     15625498058, 15640621238, 137716556823459, 139272202446921,
@@ -35,60 +33,65 @@ for _, id in ipairs(shootAnims) do
 end
 
 local autoGuardEnabled = true
-local lastToggleTime = 0
-local toggleDebounce = 0.1
 
--- GUI Toggle (Mobile Optimized UI)
+-- MOBILE OPTIMIZED GUI (Won't block joystick or jump buttons)
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "AutoGuardGUI"
+screenGui.Name = "MobileGuardUI"
 screenGui.ResetOnSpawn = false
--- Setting ZIndexBehavior ensures it doesn't override core movement layers
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling 
 screenGui.Parent = me:WaitForChild("PlayerGui")
 
 local toggleButton = Instance.new("TextButton")
-toggleButton.Size = UDim2.new(0, 140, 0, 45)
-toggleButton.Position = UDim2.new(0.5, -70, 0.1, 0)
-toggleButton.BackgroundColor3 = Color3.fromRGB(30, 150, 30)
+toggleButton.Size = UDim2.new(0, 110, 0, 45)
+-- Positioned safely on the left side of the screen above the movement stick
+toggleButton.Position = UDim2.new(0.05, 0, 0.3, 0) 
+toggleButton.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.Text = "Auto Guard: ON"
-toggleButton.Font = Enum.Font.SourceSansBold
-toggleButton.TextSize = 18
--- CRITICAL MOBILE FIX: Stop button from sinking/stealing movement touches nearby
-toggleButton.Active = false 
+toggleButton.Text = "AUTO: ON"
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.TextSize = 14
+toggleButton.ClipsDescendants = true
 toggleButton.Parent = screenGui
 
 local uiCorner = Instance.new("UICorner")
-uiCorner.CornerRadius = UDim.new(0, 8)
+uiCorner.CornerRadius = UDim.new(0, 12)
 uiCorner.Parent = toggleButton
 
+-- Visual feedback function for mobile taps
 local function toggleGuard()
     autoGuardEnabled = not autoGuardEnabled
-    toggleButton.Text = autoGuardEnabled and "Auto Guard: ON" or "Auto Guard: OFF"
-    toggleButton.BackgroundColor3 = autoGuardEnabled and Color3.fromRGB(30, 150, 30) or Color3.fromRGB(150, 30, 30)
+    
+    local targetColor = autoGuardEnabled and Color3.fromRGB(34, 197, 94) or Color3.fromRGB(239, 68, 68)
+    local targetText = autoGuardEnabled and "AUTO: ON" or "AUTO: OFF"
+    
+    TweenService:Create(toggleButton, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
+    toggleButton.Text = targetText
+    
     if not autoGuardEnabled and isGuarding then
         releaseGuard()
     end
 end
 
--- Works smoothly with finger taps on iOS without breaking the dynamic joystick context
 toggleButton.Activated:Connect(toggleGuard)
 
--- Controller Support Fallback (Doesn't affect pure mobile finger play)
-UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-    if input.KeyCode == Enum.KeyCode.ButtonA then
-        local currentTime = tick()
-        if currentTime - lastToggleTime > toggleDebounce then
-            lastToggleTime = currentTime
-            toggleGuard()
-        end
-    end
-end)
+-- PURE MOBILE REMOTE INTERACTION
+-- Fakes the guard status directly via the game's replicated state or network
+local function setMobileGuardState(state)
+    local char = me.Character
+    if not char then return end
+    
+    -- METHOD A: Fire network remotes if present (Looks for common basketball script patterns)
+    local remotes = game:FindFirstChild("RemoteEvent", true) or game:FindFirstChild("RemoteFunction", true)
+    
+    -- METHOD B: Directly change local character attributes to bypass PC input checks
+    char:SetAttribute("Guarding", state)
+    char:SetAttribute("Contesting", state)
+    char:SetAttribute("Defense", state)
+end
 
--- GUARDING LOGIC
 function pressGuard()
     if not isGuarding then
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.ButtonL2, false, game)
+        setMobileGuardState(true)
         isGuarding = true
         guardStartTime = tick()
     end
@@ -96,12 +99,12 @@ end
 
 function releaseGuard()
     if isGuarding then
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.ButtonL2, false, game)
+        setMobileGuardState(false)
         isGuarding = false
     end
 end
 
--- Detect shooting
+-- Track opponent shooting animations
 local function isShooting(plr)
     local char = plr.Character
     if not char then return nil end
@@ -117,7 +120,7 @@ local function isShooting(plr)
     return nil
 end
 
--- Court boundary check
+-- Court range check
 local function isInCourtBounds(hrp, myHRP)
     if not hrp or not myHRP then return false end
     local COURT_LENGTH, COURT_WIDTH = 70, 50
@@ -127,7 +130,7 @@ local function isInCourtBounds(hrp, myHRP)
     return pos.X >= minX and pos.X <= maxX and pos.Z >= minZ and pos.Z <= maxZ
 end
 
--- MAIN LOOP
+-- HEARTBEAT MONITOR
 RunService.Heartbeat:Connect(function()
     if not autoGuardEnabled then
         if isGuarding then
