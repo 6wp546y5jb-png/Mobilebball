@@ -6,21 +6,19 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local me = Players.LocalPlayer
 local shotFlags = {}
 local isGuarding = false
-local guardStartTime = 0
+local guardSta
 local guardDuration = 1.0
 
 -- Access Roblox's Master Control Module to force the joystick to stay
 local PlayerScripts = me:WaitForChild("PlayerScripts")
-local PlayerModule = require(PlayerScripts:WaitForChild("PlayerModule"))
+local PlayerM = require(PlayerScripts:WaitForChild("PlayerModule"))
 local ControlModule = PlayerModule:GetControls()
 
 -- Shooting animation IDs
-local shootAnims = {
+local shootAnims = 
     95017863158093, 16792383527, 72310933284051, 15933297660,
     15625498058, 15640621238, 137716556823459, 139272202446921,
-    15933244201, 15625460755, 15640551795, 115440095914436, 106278649589240
-}
-
+    15933244201, 15625460755, 15640551795, 11544009591443
 local shootAnimSet = {}
 for _, id in ipairs(shootAnims) do
     shootAnimSet[id] = true
@@ -33,37 +31,33 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AutoGuardGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = me:WaitForChild("PlayerGui")
-
-local toggleButton = Instance.new("TextButton")
+local toggleButton = Instance.new("
 toggleButton.Size = UDim2.new(0, 120, 0, 40)
 toggleButton.Position = UDim2.new(0.5, -60, 0.8, 0)
 toggleButton.BackgroundColor3 = Color3.fromRGB(50,50,50)
-toggleButton.TextColor3 = Color3.fromRGB(255,255,255)
+toggleButtonTextColor3 = Color3.fromRGB(255,255,255)
 toggleButton.Text = "Auto Guard ON"
 toggleButton.Parent = screenGui
 toggleButton.Active = true
-toggleButton.Draggable = true
+
 
 -- ULTRA SMOOTH GUARD - NO MOVEMENT INTERRUPTION
 local function pressGuard()
-    if not isGuarding then
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.ButtonL2, false, game)
+    if not isGuarding the
         isGuarding = true
         guardStartTime = tick()
     end
 end
 
-local function releaseGuard()
+local functio releaseGuard()
     if isGuarding then
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.ButtonL2, false, game)
         isGuarding = false
-    end
-end
+    
 
 toggleButton.MouseButton1Click:Connect(function()
-    autoGuardEnabled = not autoGuardEnabled
-    toggleButton.Text = autoGuardEnabled and "Auto Guard ON" or "Auto Guard OFF"
-    if not autoGuardEnabled and isGuarding then
+    autoGuardEnabled = not autoGuardEnable.Text = autoGuardEnabled and "Auto Guard ON" or "Auto Guard OFF"
+    if not autoGuardEna and isGuarding then
         releaseGuard()
     end
 end)
