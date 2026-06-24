@@ -18,7 +18,7 @@ local me = Players.LocalPlayer
 local shotFlags = {}
 local isGuarding = false
 local guardStartTime = 0
-local guardDuration = 1.0
+local guardDuration = 0.8 -- Slightly reduced for faster mobile reaction
 
 -- Shooting animation IDs to track
 local shootAnims = {
@@ -34,7 +34,7 @@ end
 
 local autoGuardEnabled = true
 
--- MOBILE OPTIMIZED GUI (Won't block joystick or jump buttons)
+-- SAFE MOBILE GUI (Size and position adjusted to not interfere with screen touches)
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "MobileGuardUI"
 screenGui.ResetOnSpawn = false
@@ -42,20 +42,53 @@ screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = me:WaitForChild("PlayerGui")
 
 local toggleButton = Instance.new("TextButton")
-toggleButton.Size = UDim2.new(0, 110, 0, 45)
--- Positioned safely on the left side of the screen above the movement stick
-toggleButton.Position = UDim2.new(0.05, 0, 0.3, 0) 
+toggleButton.Size = UDim2.new(0, 90, 0, 40)
+-- Placed mid-left, safely above the dynamic thumbstick area
+toggleButton.Position = UDim2.new(0.05, 0, 0.25, 0) 
 toggleButton.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleButton.Text = "AUTO: ON"
 toggleButton.Font = Enum.Font.GothamBold
-toggleButton.TextSize = 14
+toggleButton.TextSize = 12
 toggleButton.ClipsDescendants = true
 toggleButton.Parent = screenGui
 
 local uiCorner = Instance.new("UICorner")
-uiCorner.CornerRadius = UDim.new(0, 12)
+uiCorner.CornerRadius = UDim.new(0, 8)
 uiCorner.Parent = toggleButton
+
+-- Replicated communication handler
+local function setMobileGuardState(state)
+    local char = me.Character
+    if not char then return end
+    
+    -- Method 1: Local state attributes
+    char:SetAttribute("Guarding", state)
+    char:SetAttribute("Contesting", state)
+    char:SetAttribute("Defense", state)
+    
+    -- Method 2: Fire network communication remotes if the game uses them
+    for _, obj in ipairs(char:GetDescendants()) do
+        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("guard") or obj.Name:lower():find("defend") or obj.Name:lower():find("input")) then
+            obj:FireServer(state)
+        end
+    end
+end
+
+local function releaseGuard()
+    if isGuarding then
+        setMobileGuardState(false)
+        isGuarding = false
+    end
+end
+
+local function pressGuard()
+    if not isGuarding then
+        setMobileGuardState(true)
+        isGuarding = true
+        guardStartTime = tick()
+    end
+end
 
 -- Visual feedback function for mobile taps
 local function toggleGuard()
@@ -73,36 +106,6 @@ local function toggleGuard()
 end
 
 toggleButton.Activated:Connect(toggleGuard)
-
--- PURE MOBILE REMOTE INTERACTION
--- Fakes the guard status directly via the game's replicated state or network
-local function setMobileGuardState(state)
-    local char = me.Character
-    if not char then return end
-    
-    -- METHOD A: Fire network remotes if present (Looks for common basketball script patterns)
-    local remotes = game:FindFirstChild("RemoteEvent", true) or game:FindFirstChild("RemoteFunction", true)
-    
-    -- METHOD B: Directly change local character attributes to bypass PC input checks
-    char:SetAttribute("Guarding", state)
-    char:SetAttribute("Contesting", state)
-    char:SetAttribute("Defense", state)
-end
-
-function pressGuard()
-    if not isGuarding then
-        setMobileGuardState(true)
-        isGuarding = true
-        guardStartTime = tick()
-    end
-end
-
-function releaseGuard()
-    if isGuarding then
-        setMobileGuardState(false)
-        isGuarding = false
-    end
-end
 
 -- Track opponent shooting animations
 local function isShooting(plr)
@@ -123,11 +126,9 @@ end
 -- Court range check
 local function isInCourtBounds(hrp, myHRP)
     if not hrp or not myHRP then return false end
-    local COURT_LENGTH, COURT_WIDTH = 70, 50
-    local minX, maxX = myHRP.Position.X - COURT_WIDTH/2, myHRP.Position.X + COURT_WIDTH/2
-    local minZ, maxZ = myHRP.Position.Z - COURT_LENGTH/2, myHRP.Position.Z + COURT_LENGTH/2
-    local pos = hrp.Position
-    return pos.X >= minX and pos.X <= maxX and pos.Z >= minZ and pos.Z <= maxZ
+    -- Limits the check range to standard basketball court space
+    local distance = (hrp.Position - myHRP.Position).Magnitude
+    return distance <= 25 
 end
 
 -- HEARTBEAT MONITOR
